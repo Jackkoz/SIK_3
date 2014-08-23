@@ -16,6 +16,10 @@ ostream& operator<<(ostream& os, const vector<T>& v)
     return os;
 }
 
+long PORT;
+
+long RETRANSMIT_LIMIT;
+
 // Numery portów klienta powinny być dynamicznie przydzielone przez system.
 
 void identifyMessage(String message)
@@ -53,13 +57,15 @@ int main(int ac, char* av[])
 {
     try
     {
-        int portnum;
         po::options_description desc("Allowed options");
         desc.add_options()
             ("help", "produce help message")
-            ("port,p", po::value<int>(&portnum)
+            ("port,p", po::value<long>(&PORT)
                   ->default_value(10000 + 334678 % 10000,"no"),
                   "listen on a port.")
+            ("retransmit-limit,X", po::value<long>(&RETRANSMIT_LIMIT)
+                  ->default_value(10,"no"),
+                  "")
             ("server,s", po::value< vector<string> >(),
                   "server")
         ;
@@ -89,6 +95,11 @@ int main(int ac, char* av[])
         {
             cout << "server: "
                  << vm["server"].as< vector<string> >() << "\n";
+        }
+
+        if (vm.count("retransmit-limit"))
+        {
+
         }
     }
     catch(std::exception& e)

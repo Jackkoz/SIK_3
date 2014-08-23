@@ -9,14 +9,29 @@ namespace po = boost::program_options;
 
 using namespace std;
 
-template<class T>
-ostream& operator<<(ostream& os, const vector<T>& v)
-{
-    copy(v.begin(), v.end(), ostream_iterator<T>(os, " "));
-    return os;
-}
+// PORT - numer portu, z którego korzysta serwer do komunikacji
+// (zarówno TCP, jak i UDP), domyślnie 10000 + (numer_albumu % 10000);
+// ustawiany parametrem -p serwera, opcjonalnie też klient (patrz opis)
+long PORT;
 
-class client
+// FIFO_SIZE - rozmiar w bajtach kolejki FIFO, którą serwer utrzymuje dla każdego z klientów; ustawiany parametrem -F serwera, domyślnie 10560
+long FIFO_SIZE;
+
+// FIFO_LOW_WATERMARK - opis w treści; ustawiany parametrem -L serwera, domyślnie 0
+long FIFO_LOW_WATERMARK;
+
+// FIFO_HIGH_WATERMARK - opis w treści; ustawiany parametrem -H serwera, domyślnie równy FIFO_SIZE
+long FIFO_HIGH_WATERMARK;
+
+// BUF_LEN - rozmiar (w datagramach) bufora pakietów wychodzących, ustawiany parametrem -X serwera, domyślnie 10
+long BUF_LEN;
+
+// TX_INTERVAL - czas (w milisekundach) pomiędzy kolejnymi wywołaniami miksera, ustawiany parametrem -i serwera; domyślnie: 5ms
+long TX_INTERVAL;
+
+map<long, Client> clients;
+
+class Client
 {
     private int example_variable;
 
@@ -68,17 +83,38 @@ void identifyMessage(String message)
 
 }
 
+template<class T>
+ostream& operator<<(ostream& os, const vector<T>& v)
+{
+    copy(v.begin(), v.end(), ostream_iterator<T>(os, " "));
+    return os;
+}
+
 int main(int ac, char* av[])
 {
     try
     {
-        int portnum;
         po::options_description desc("Allowed options");
         desc.add_options()
             ("help", "produce help message")
-            ("port,p", po::value<int>(&portnum)
+            ("port,p", po::value<long>(&PORT)
                   ->default_value(10000 + 334678 % 10000,"no"),
-                  "listen on a port.")
+                  "listen on a port")
+            ("fifo-size,F", po::value<long>(&FIFO_SIZE)
+                  ->default_value(10560,"no"),
+                  "Size of FIFO in use")
+            ("fifo-low-watermark,L", po::value<long>(&FIFO_LOW_WATERMARK)
+                  ->default_value(0,"no"),
+                  "")
+            ("fifo-high-watermark,H", po::value<long>(&FIFO_HIGH_WATERMARK)
+                  ->default_value(FIFO_SIZE,"no"),
+                  "")
+            ("buf-len,X", po::value<long>(&BUF_LEN)
+                  ->default_value(10,"no"),
+                  "")
+            ("tx-interval,i", po::value<long>(&TX_INTERVAL)
+                  ->default_value(5,"no"),
+                  "Sound transmission interval")
         ;
 
         po::positional_options_description p;
@@ -98,8 +134,33 @@ int main(int ac, char* av[])
 
         if (vm.count("port"))
         {
-            cout << "port: "
-                 << vm["port"].as<int>() << "\n";
+            PORT = vm["port"].as<long>();
+        }
+
+        if (vm.count("fifo-size"))
+        {
+            FIFO_SIZE = vm["fifo-size"].as<long>();
+            FIFO_HIGH_WATERMARK = vm["fifo-size"].as<long>();
+        }
+
+        if (vm.count("fifo-low-watermark"))
+        {
+            FIFO_LOW_WATERMARK = vm["fifo-low-watermark"].as<long>();
+        }
+
+        if (vm.count("fifo-high-watermark"))
+        {
+            FIFO_HIGH_WATERMARK = vm["fifo-high-watermark"].as<long>();
+        }
+
+        if (vm.count("buf-len"))
+        {
+            BUF_LEN = vm["buf-len"].as<long>();
+        }
+
+        if (vm.count("tx-interval"))
+        {
+            TX_INTERVAL = vm["tx-interval"].as<long>();
         }
     }
     catch(std::exception& e)
