@@ -8,4 +8,5 @@ void mixer(
     size_t* output_size,                   // początkowo rozmiar output_buf, następnie mikser umieszcza
                                            // w tej zmiennej liczbę bajtów zapisanych w output_buf
     unsigned long tx_interval_ms           // wartość zmiennej TX_INTERVAL
-) {}
+)
+{}

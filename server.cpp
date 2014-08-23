@@ -5,10 +5,10 @@ namespace po = boost::program_options;
 
 #include <iostream>
 #include <iterator>
+#include <regex>
 
 using namespace std;
 
-// A helper function to simplify the main part.
 template<class T>
 ostream& operator<<(ostream& os, const vector<T>& v)
 {
@@ -16,9 +16,57 @@ ostream& operator<<(ostream& os, const vector<T>& v)
     return os;
 }
 
-//Nasłuchuj TCP
+class client
+{
+    private int example_variable;
 
-//Nasłuchuj UDP
+    private int example_method()
+    {
+        return 0;
+    }
+};
+
+void identifyMessage(String message)
+{
+    std::tr1::regex regex = "^CLIENT";
+    if (std::tr1::regex_search(message.begin(), message.end(), regex))
+    {
+        // CLIENT clientid\n
+        // Wysyłany przez klienta jako pierwszy datagram UDP. Parametr clientid powinien być taki
+        // sam jak odebrany od serwera w połączeniu TCP.
+        return;
+    }
+
+    regex = "^UPLOAD";
+    if (std::tr1::regex_search(message.begin(), message.end(), regex))
+    {
+        // UPLOAD nr\n
+        // [dane]
+        // Wysyłany przez klienta datagram z danymi.
+        // Nr to numer datagramu, zwiększany o jeden przy każdym kolejnym fragmencie danych.
+        // Taki datagram może być wysłany tylko po uprzednim odebraniu wartości ack
+        // (patrz ACK lub DATA) równej nr oraz nie może zawierać więcej danych niż ostatnio odebrana wartość win.
+        return;
+    }
+
+    regex = "^RETRANSMIT";
+    if (std::tr1::regex_search(message.begin(), message.end(), regex))
+    {
+        // RETRANSMIT nr\n
+        // Wysyłana przez klienta do serwera prośba o ponowne przesłanie wszystkich dostępnych
+        // datagramów o numerach większych lub równych nr.
+        return;
+    }
+
+    regex = "^KEEPALIVE";
+    if (std::tr1::regex_search(message.begin(), message.end(), regex))
+    {
+        // KEEPALIVE\n
+        // Wysyłany przez klienta do serwera 10 razy na sekundę.
+        return;
+    }
+
+}
 
 int main(int ac, char* av[])
 {
@@ -31,8 +79,6 @@ int main(int ac, char* av[])
             ("port,p", po::value<int>(&portnum)
                   ->default_value(10000 + 334678 % 10000,"no"),
                   "listen on a port.")
-            ("server,s", po::value< vector<string> >(),
-                  "server")
         ;
 
         po::positional_options_description p;
@@ -55,12 +101,6 @@ int main(int ac, char* av[])
             cout << "port: "
                  << vm["port"].as<int>() << "\n";
         }
-
-        if (vm.count("server"))
-        {
-            cout << "server: "
-                 << vm["server"].as< vector<string> >() << "\n";
-        }
     }
     catch(std::exception& e)
     {
@@ -69,6 +109,10 @@ int main(int ac, char* av[])
     }
 
     cout << "I'm working!" << endl;
+
+    TCP_socket = socket(PF_INET, SOCK_STREAM, 0); // creating IPv4 TCP socket
+
+    cout << "Accepting TCP connections" << endl;
 
     return 0;
 }

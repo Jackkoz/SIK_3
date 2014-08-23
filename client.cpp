@@ -18,9 +18,36 @@ ostream& operator<<(ostream& os, const vector<T>& v)
 
 // Numery portów klienta powinny być dynamicznie przydzielone przez system.
 
-// Połącz przez TCP
+void identifyMessage(String message)
+{
+    std::tr1::regex regex = "^DATA";
+    if (std::tr1::regex_search(message.begin(), message.end(), regex))
+    {
+        // DATA nr ack win\n
+        // [dane]
 
-// Połącz przez UDP
+        // Wysyłany przez serwer datagram z danymi.
+        // Nr to numer datagramu, zwiększany o jeden przy każdym kolejnym fragmencie danych;
+        // służy do identyfikacji datagramów na potrzeby retransmisji.
+        // Ack to numer kolejnego datagramu (patrz UPLOAD) oczekiwanego od klienta,
+        // a win to liczba wolnych bajtów w FIFO.
+
+        // Dane należy przesyłać w formie binarnej, dokładnie tak, jak wyprodukował je mikser.
+        return;
+    }
+
+    regex = "^ACK";
+    if (std::tr1::regex_search(message.begin(), message.end(), regex))
+    {
+        // ACK ack win\n
+        // [dane]
+
+        // Wysyłany przez serwer datagram potwierdzający otrzymanie danych.
+        // Jest wysyłany po odebraniu każdego poprawnego datagramu UPLOAD.
+        // Znaczenie ack i win -- patrz DATA.
+        return;
+    }
+}
 
 int main(int ac, char* av[])
 {
