@@ -9,6 +9,17 @@ namespace po = boost::program_options;
 
 using namespace std;
 
+class Client
+{
+    private:
+        int example_variable;
+
+        int example_method()
+        {
+            return 0;
+        }
+};
+
 // PORT - numer portu, z którego korzysta serwer do komunikacji
 // (zarówno TCP, jak i UDP), domyślnie 10000 + (numer_albumu % 10000);
 // ustawiany parametrem -p serwera, opcjonalnie też klient (patrz opis)
@@ -31,20 +42,10 @@ long TX_INTERVAL;
 
 map<long, Client> clients;
 
-class Client
+void identifyMessage(string message)
 {
-    private int example_variable;
-
-    private int example_method()
-    {
-        return 0;
-    }
-};
-
-void identifyMessage(String message)
-{
-    std::tr1::regex regex = "^CLIENT";
-    if (std::tr1::regex_search(message.begin(), message.end(), regex))
+    std::regex regex("^CLIENT");
+    if (std::regex_search(message.begin(), message.end(), regex))
     {
         // CLIENT clientid\n
         // Wysyłany przez klienta jako pierwszy datagram UDP. Parametr clientid powinien być taki
@@ -52,8 +53,8 @@ void identifyMessage(String message)
         return;
     }
 
-    regex = "^UPLOAD";
-    if (std::tr1::regex_search(message.begin(), message.end(), regex))
+    regex = std::regex("^UPLOAD");
+    if (std::regex_search(message.begin(), message.end(), regex))
     {
         // UPLOAD nr\n
         // [dane]
@@ -64,8 +65,8 @@ void identifyMessage(String message)
         return;
     }
 
-    regex = "^RETRANSMIT";
-    if (std::tr1::regex_search(message.begin(), message.end(), regex))
+    regex = std::regex("^RETRANSMIT");
+    if (std::regex_search(message.begin(), message.end(), regex))
     {
         // RETRANSMIT nr\n
         // Wysyłana przez klienta do serwera prośba o ponowne przesłanie wszystkich dostępnych
@@ -73,8 +74,8 @@ void identifyMessage(String message)
         return;
     }
 
-    regex = "^KEEPALIVE";
-    if (std::tr1::regex_search(message.begin(), message.end(), regex))
+    regex = std::regex("^KEEPALIVE");
+    if (std::regex_search(message.begin(), message.end(), regex))
     {
         // KEEPALIVE\n
         // Wysyłany przez klienta do serwera 10 razy na sekundę.
@@ -171,7 +172,7 @@ int main(int ac, char* av[])
 
     cout << "I'm working!" << endl;
 
-    TCP_socket = socket(PF_INET, SOCK_STREAM, 0); // creating IPv4 TCP socket
+    // TCP_socket = socket(PF_INET, SOCK_STREAM, 0); // creating IPv4 TCP socket
 
     cout << "Accepting TCP connections" << endl;
 

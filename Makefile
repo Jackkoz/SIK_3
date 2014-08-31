@@ -1,6 +1,6 @@
 TARGETS	= client server
 CXX	= g++
-CXXFLAGS= -I ~/boost_1_55_0/ -lboost_program_options
+CXXFLAGS= -std=c++0x -I ~/boost_1_55_0/ -lboost_system -lboost_program_options
 
 all: $(TARGETS) 
 
