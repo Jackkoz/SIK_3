@@ -1,14 +1,12 @@
 #include <boost/program_options.hpp>
 
-// using namespace boost;
 namespace po = boost::program_options;
 
 #include <iostream>
 #include <iterator>
+#include <cstdlib>
 
 #include <regex>
-
-#include <pthread.h>
 
 #include <boost/array.hpp>
 #include <boost/asio.hpp>
@@ -17,6 +15,7 @@ namespace po = boost::program_options;
 
 using namespace std;
 using boost::asio::ip::tcp;
+using boost::asio::ip::udp;
 
 // A helper function to simplify program options
 template<class T>
@@ -32,7 +31,27 @@ long RETRANSMIT_LIMIT;
 
 string SERVER;
 
+long myID = 1;
+
 boost::asio::io_service ioService;
+
+tcp::socket tcp_socket(ioService);
+
+boost::array<char, 16384> tcp_buffer;
+
+udp::socket udp_socket(ioService);
+
+char udp_receive_buffer[16384];
+
+char udp_send_buffer[16384];
+
+char udp_datagram[16384];
+
+udp::resolver resolver(ioService);
+
+udp::resolver::query query(SERVER, to_string(PORT));
+
+udp::endpoint udp_receiver_endpoint = *resolver.resolve(query);
 
 boost::asio::deadline_timer connection_timer(ioService, boost::posix_time::seconds(1));
 
@@ -42,7 +61,10 @@ bool connectionIsProblematic = false;
 
 bool connectionIsAlive = true;
 
-void setup(int ac, char* av[])
+/**
+ * Ustawienie zmiennych serwera na domyślne lub przeczytane z linii poleceń.
+ */
+bool setup(int ac, char* av[])
 {
     try
     {
@@ -50,13 +72,13 @@ void setup(int ac, char* av[])
         desc.add_options()
             ("help", "produce help message")
             ("port,p", po::value<long>(&PORT)
-                  ->default_value(10000 + 334678 % 10000,"no"),
-                  "listen on a port.")
+                  ->default_value(10000 + 334678 % 10000),
+                  "Connection port")
             ("retransmit-limit,X", po::value<long>(&RETRANSMIT_LIMIT)
-                  ->default_value(10,"no"),
-                  "")
-            ("server,s", po::value<string>(),
-                  "server")
+                  ->default_value(10),
+                  "Limit of retransitions")
+            ("server,s", po::value<string>(&SERVER),
+                  "Remote server address")
         ;
 
         po::positional_options_description p;
@@ -71,68 +93,80 @@ void setup(int ac, char* av[])
         {
             cout << "Usage: options_description [options]\n";
             cout << desc;
-            exit(0);
+            return false;
         }
 
         if (vm.count("port"))
         {
             PORT = vm["port"].as<long>();
-            cout << "port: "
-                 << PORT << "\n";
+            // cout << "port: "
+            //      << PORT << "\n";
         }
 
         if (vm.count("server"))
         {
             SERVER = vm["server"].as<string>();
-            cout << "server: "
-                 << SERVER << "\n";
+            // cout << "server: "
+            //      << SERVER << "\n";
+        }
+        else
+        {
+            cout << "Please provide the server address.\n";
+            return false;
         }
 
         if (vm.count("retransmit-limit"))
         {
             RETRANSMIT_LIMIT = vm["retransmit-limit"].as<long>();
-            cout << "RETRANSMIT_LIMIT: "
-                 << RETRANSMIT_LIMIT << "\n";
+            // cout << "RETRANSMIT_LIMIT: "
+            //      << RETRANSMIT_LIMIT << "\n";
         }
+
+        return true;
     }
     catch(std::exception& e)
     {
         cout << e.what() << "\n";
-        exit(1);
+        return false;
     }
 }
 
 void keepalive(const boost::system::error_code& /*e*/, boost::asio::deadline_timer* t)
 {
-    // cerr << "keepalive\n";
     t->expires_at(t->expires_at() + boost::posix_time::milliseconds(100));
-    t->async_wait(boost::bind(keepalive,
+    t->async_wait(boost::bind(&keepalive,
             boost::asio::placeholders::error, t));
 }
+
+void udp_write_handler(const boost::system::error_code&) {}
 
 /**
  * Zadanie odpowiedzialne za okresowe przesyłanie komunikatu keepalive
  */
 void keepalive_task()
 {
-    // cerr << "keepalive_task\n";
+    char buffer[256];
+    sprintf(buffer, "keepalive");
 
-    keepalive_timer.async_wait(boost::bind(keepalive,
+    udp_socket.async_send_to(boost::asio::buffer(buffer), udp_receiver_endpoint,
+                             boost::bind(&udp_write_handler,
+                                    boost::asio::placeholders::error));
+
+    keepalive_timer.async_wait(boost::bind(&keepalive,
             boost::asio::placeholders::error, &keepalive_timer));
 }
 
 void check_connection(const boost::system::error_code& /*e*/, boost::asio::deadline_timer* t)
 {
-    // cerr << "check_connection\n";
-    // if (!connectionIsAlive)
-    // {
-    //     connectionIsProblematic = true;
+    if (!connectionIsAlive)
+    {
+        connectionIsProblematic = true;
         t->expires_at(t->expires_at() + boost::posix_time::seconds(1));
-        t->async_wait(boost::bind(check_connection,
+        t->async_wait(boost::bind(&check_connection,
                 boost::asio::placeholders::error, t));
-    // }
-    // else
-    //     connectionIsAlive = false;
+    }
+    else
+        connectionIsAlive = false;
 }
 
 /**
@@ -140,12 +174,44 @@ void check_connection(const boost::system::error_code& /*e*/, boost::asio::deadl
  */
 void check_connection_task()
 {
-    // cerr << "check_connection_task\n";
-
     connection_timer.async_wait(boost::bind(check_connection,
             boost::asio::placeholders::error, &connection_timer));
 }
 
+/**
+ * Forward declaration for tcp_handler
+ */
+void tcp_receive_raports();
+
+/**
+ * Obsługa przeczytanego raportu
+ */
+void tcp_handler(const boost::system::error_code &error, size_t bytes_transferred)
+{
+    if (error)
+    {
+        cerr << "An error occurred: " << error.message() << "\n";
+        connectionIsProblematic = true;
+    }
+
+    cout.write(tcp_buffer.data(), bytes_transferred);
+    tcp_receive_raports();
+}
+
+/**
+ * Asynchroniczne oczekiwanie na raport serwera
+ */
+void tcp_receive_raports()
+{
+    tcp_socket.async_read_some(boost::asio::buffer(tcp_buffer),
+            boost::bind(&tcp_handler,
+                    boost::asio::placeholders::error,
+                    boost::asio::placeholders::bytes_transferred));
+}
+
+/**
+ * Nawiązanie połączenia TCP z serwerem
+ */
 void connect_tcp()
 {
     cout << "connect_tcp\n";
@@ -154,7 +220,6 @@ void connect_tcp()
     tcp::resolver::iterator endpoint_iterator = resolver.resolve(query);
     tcp::resolver::iterator end;
 
-    tcp::socket tcp_socket(ioService);
     boost::system::error_code error = boost::asio::error::host_not_found;
     while (error && endpoint_iterator != end)
     {
@@ -167,81 +232,115 @@ void connect_tcp()
 
     try
     {
-        boost:array<char, 256> buf;
+        char buf[256];
         boost::system::error_code error;
-
-        cout << "Reading\n";
 
         size_t len = tcp_socket.read_some(boost::asio::buffer(buf), error);
 
-        cout << "Done\n";
-
         if (error == boost::asio::error::eof)
         {
-            cout << "1\n";
-            // break; // TODO Connection closed cleanly by peer
+            connectionIsProblematic = true;
         }
         else if (error)
         {
-            cout << "2\n";
-            throw boost::system::system_error(error); // Some other error.
+            connectionIsProblematic = true;
+            // throw boost::system::system_error(error); // Some other error.
         }
 
-        std::cout.write(buf.data(), len);
+        sscanf(buf, "CLIENT %d\n", &myID);
+
+        // cout << myID;
     }
     catch (exception& e)
     {
-
+        // HANDLE
+        connectionIsProblematic = true;
     }
+}
+
+void connect_udp()
+{
+    udp_socket.open(udp::v6());
+
+    char buffer[256];
+
+    sprintf(buffer, "CLIENT %d\n", myID);
+
+    udp_socket.async_send_to(boost::asio::buffer(buffer), udp_receiver_endpoint,
+                             boost::bind(udp_write_handler,
+                                    boost::asio::placeholders::error));
+}
+
+/**
+ * Forward declaration for udp_communication_handler()
+ */
+void udp_communicate();
+
+void handle_data_datagram()
+{
 
 }
 
-void identifyMessage(string message)
+void handle_ack_datagram()
 {
-    std::regex regex("^DATA");
-    if (std::regex_search(message.begin(), message.end(), regex))
+
+}
+
+void udp_communication_handler(const boost::system::error_code &error, size_t bytes_transferred)
+{
+    connectionIsAlive = true;
+
+   if (error)
     {
-        // DATA nr ack win\n
-        // [dane]
-
-        // Wysyłany przez serwer datagram z danymi.
-        // Nr to numer datagramu, zwiększany o jeden przy każdym kolejnym fragmencie danych;
-        // służy do identyfikacji datagramów na potrzeby retransmisji.
-        // Ack to numer kolejnego datagramu (patrz UPLOAD) oczekiwanego od klienta,
-        // a win to liczba wolnych bajtów w FIFO.
-
-        // Dane należy przesyłać w formie binarnej, dokładnie tak, jak wyprodukował je mikser.
-        return;
+        cerr << "An error occurred: " << error.message() << "\n";
+        connectionIsProblematic = true;
     }
 
-    regex = std::regex("^ACK");
-    if (std::regex_search(message.begin(), message.end(), regex))
-    {
-        // ACK ack win\n
-        // [dane]
+    char datagram_type[16];
 
-        // Wysyłany przez serwer datagram potwierdzający otrzymanie danych.
-        // Jest wysyłany po odebraniu każdego poprawnego datagramu UPLOAD.
-        // Znaczenie ack i win -- patrz DATA.
-        return;
-    }
+    sscanf(udp_receive_buffer, "%s ", datagram_type);
+
+    // handle datagram
+
+    if (strcmp("DATA", datagram_type) == 0)
+        handle_data_datagram();
+    else if (strcmp("ACK", datagram_type) == 0)
+        handle_ack_datagram();
+
+    // cout.write(tcp_buffer.data(), bytes_transferred);
+    udp_communicate();
+}
+
+void udp_communicate()
+{
+    udp_socket.async_receive_from(
+                            boost::asio::buffer(udp_receive_buffer), udp_receiver_endpoint,
+                            boost::bind(udp_communication_handler,
+                                        boost::asio::placeholders::error,
+                                        boost::asio::placeholders::bytes_transferred));
+}
+
+void reboot()
+{
+    // TODO
+
+    // Free resources
+
+    // Re-run procedures
+
+    connectionIsProblematic = false;
 }
 
 int main(int ac, char* av[])
 {
-    cerr << "Client reporting\n" << endl;
+    if (!setup(ac, av))
+        exit(0);
 
-    setup(ac, av);
-    keepalive_task();
-    check_connection_task();
     connect_tcp();
+    keepalive_task();
+    tcp_receive_raports();
+    check_connection_task();
 
-    //Przyjmuj dane ze standardowego wejścia i wrzucaj na serwer
-
-    //zakończ przyjmowanie
-
-    //Odbieraj dane od serwera aż do sigint
     ioService.run();
-
     return 0;
 }
