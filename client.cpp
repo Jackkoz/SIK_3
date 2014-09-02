@@ -47,6 +47,8 @@ char udp_send_buffer[16384];
 
 char udp_datagram[16384];
 
+long win;
+
 udp::resolver resolver(ioService);
 
 udp::resolver::query query(SERVER, to_string(PORT));
@@ -99,15 +101,11 @@ bool setup(int ac, char* av[])
         if (vm.count("port"))
         {
             PORT = vm["port"].as<long>();
-            // cout << "port: "
-            //      << PORT << "\n";
         }
 
         if (vm.count("server"))
         {
             SERVER = vm["server"].as<string>();
-            // cout << "server: "
-            //      << SERVER << "\n";
         }
         else
         {
@@ -118,9 +116,11 @@ bool setup(int ac, char* av[])
         if (vm.count("retransmit-limit"))
         {
             RETRANSMIT_LIMIT = vm["retransmit-limit"].as<long>();
-            // cout << "RETRANSMIT_LIMIT: "
-            //      << RETRANSMIT_LIMIT << "\n";
         }
+
+        cerr << "PORT: " << PORT;
+        cerr << "\nSERVER " << SERVER;
+        cerr << "\nRETRANSMIT_LIMIT " << RETRANSMIT_LIMIT << '\n';
 
         return true;
     }
@@ -170,7 +170,7 @@ void check_connection(const boost::system::error_code& /*e*/, boost::asio::deadl
 }
 
 /**
- * Zadanie odpowiedzialne za sprawdzanie ciągłość przesyłu danych od serwera
+ * Zadanie odpowiedzialne za sprawdzanie ciągłości przesyłu danych od serwera
  */
 void check_connection_task()
 {
@@ -194,7 +194,8 @@ void tcp_handler(const boost::system::error_code &error, size_t bytes_transferre
         connectionIsProblematic = true;
     }
 
-    cout.write(tcp_buffer.data(), bytes_transferred);
+    // cout.write(tcp_buffer.data(), bytes_transferred);
+
     tcp_receive_raports();
 }
 
@@ -306,6 +307,7 @@ void udp_communication_handler(const boost::system::error_code &error, size_t by
         handle_data_datagram();
     else if (strcmp("ACK", datagram_type) == 0)
         handle_ack_datagram();
+    // else unknown datagram; ignore
 
     // cout.write(tcp_buffer.data(), bytes_transferred);
     udp_communicate();
