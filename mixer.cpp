@@ -1,5 +1,4 @@
 #include <cstddef>
-#include "mixer.h"
 
 struct mixer_input
 {
