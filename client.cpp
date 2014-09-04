@@ -42,11 +42,7 @@ char udp_datagram[65536];
 
 long win = 0;
 
-udp::resolver resolver(ioService);
-
-udp::resolver::query query(SERVER, to_string(PORT));
-
-udp::endpoint udp_receiver_endpoint = *resolver.resolve(query);
+udp::endpoint udp_receiver_endpoint;
 
 boost::asio::deadline_timer connection_timer(ioService, boost::posix_time::seconds(1));
 
@@ -73,7 +69,7 @@ void udp_communicate();
 void handle_data_datagram();
 void handle_ack_datagram();
 void udp_communication_handler(const boost::system::error_code &error, size_t bytes_transferred);
-void reboot_server();
+void reboot_client();
 void start_server();
 
 /**
@@ -171,7 +167,7 @@ void check_connection(const boost::system::error_code& /*e*/, boost::asio::deadl
     else
     {
         cerr << "Connection determined dead\n";
-        reboot_server();
+        reboot_client();
     }
 }
 
@@ -189,7 +185,7 @@ void tcp_handler(const boost::system::error_code &error, size_t bytes_transferre
     if (error)
     {
         cerr << "An error occurred when reading TCP: " << error.message() << "\n";
-        reboot_server();
+        reboot_client();
         return;
     }
 
@@ -226,7 +222,7 @@ void connect_tcp()
     catch (exception& e)
     {
         cerr << "Error resolving TCP Query\n";
-        reboot_server();
+        reboot_client();
     }
     tcp::resolver::iterator end;
 
@@ -249,7 +245,7 @@ void connect_tcp()
             exit(0);
         }
 
-        reboot_server();
+        reboot_client();
         return;
     }
 
@@ -265,20 +261,22 @@ void connect_tcp()
         if (error)
         {
             cerr << "Error on reading TCP connection: " << error.message() << '\n';
-            reboot_server();
+            reboot_client();
             return;
         }
 
+        // cerr << buf << '\n';
+
         cerr << "Reading ID\n";
 
-        sscanf(buf, "CLIENT %d\n", &myID);
+        sscanf(buf, "CLIENT %ld\n", &myID);
 
         cerr << "Obtained id: " + myID + '\n';
     }
     catch (exception& e)
     {
         cerr << "Error on creating TCP connection: " << e.what() << '\n';
-        reboot_server();
+        reboot_client();
         return;
     }
 }
@@ -288,6 +286,11 @@ void connect_tcp()
  */
 void connect_udp()
 {
+    udp::resolver resolver(ioService);
+    udp::resolver::query query(SERVER, to_string(PORT));
+
+    udp_receiver_endpoint = *resolver.resolve(query);
+
     try
     {
         udp_socket.open(udp::v6());
@@ -295,13 +298,13 @@ void connect_udp()
     catch (exception& e)
     {
         cerr << "Error on creating UDP connection: " << e.what() << '\n';
-        reboot_server();
+        reboot_client();
         return;
     }
 
     char buffer[256];
 
-    sprintf(buffer, "CLIENT %d\n", myID);
+    sprintf(buffer, "CLIENT %ld\n", myID);
 
     udp_socket.async_send_to(boost::asio::buffer(buffer), udp_receiver_endpoint,
                              boost::bind(udp_write_handler,
@@ -325,13 +328,15 @@ void udp_communication_handler(const boost::system::error_code &error, size_t by
    if (error)
     {
         cerr << "An error occurred while reading UDP: " << error.message() << "\n";
-        reboot_server();
+        reboot_client();
         return;
     }
 
     char datagram_type[16];
 
     sscanf(udp_receive_buffer, "%s ", datagram_type);
+
+    cout << datagram_type << '\n';
 
     if (strcmp("DATA", datagram_type) == 0)
         handle_data_datagram();
@@ -340,7 +345,7 @@ void udp_communication_handler(const boost::system::error_code &error, size_t by
     else
         cerr << "Unknown datagram, ignoring\n";
 
-    // cout.write(tcp_buffer.data(), bytes_transferred);
+    // cout.write(udp_receive_buffer, bytes_transferred);
     udp_communicate();
 }
 
@@ -348,14 +353,14 @@ void udp_communicate()
 {
     udp_socket.async_receive_from(
             boost::asio::buffer(udp_receive_buffer), udp_receiver_endpoint,
-            boost::bind(udp_communication_handler,
+            boost::bind(&udp_communication_handler,
                         boost::asio::placeholders::error,
                         boost::asio::placeholders::bytes_transferred));
 }
 
-void reboot_server()
+void reboot_client()
 {
-    cerr << "Rebooting server\n";
+    cerr << "Rebooting client\n";
 
     try
     {
@@ -378,26 +383,21 @@ void reboot_server()
     connection_timer.cancel();
     cerr << "Timers cancelled\n";
 
-    ioService.stop();
-    cerr << "IO Service stopped\n";
-
     time_duration timeSinceRestart = microsec_clock::local_time() - lastRestart;
     long milliseconds = timeSinceRestart.total_milliseconds();
 
     if (milliseconds < 500)
     {
-        cerr << "Sleeping for: " << 500 - milliseconds << '\n';
+        cerr << "Sleeping for: " << 500 - milliseconds << " milliseconds\n";
         usleep((500 - milliseconds) * 1000);
-        cerr << "Waking\n";
+        cerr << "Awake\n";
     }
 
     lastRestart = microsec_clock::local_time();
 
     start_server();
 
-    cerr << "Server rebooted\n";
-
-    ioService.run();
+    cerr << "Client rebooted\n";
 }
 
 void start_server()
@@ -410,8 +410,15 @@ void start_server()
 
     connectionIsAlive = true;
 
+
     connect_tcp();
     cerr << "Connected on TCP\n";
+
+    connect_udp();
+    cerr << "Connected on UDP\n";
+
+    udp_communicate();
+    cerr << "Started UDP communication\n";
 
     keepalive_task();
     cerr << "Keepalive task started\n";
@@ -427,7 +434,7 @@ int main(int ac, char* av[])
 {
     if (!setup(ac, av))
     {
-        cerr << "Invalid server setup\nShutting down\n";
+        cerr << "Invalid client setup\nShutting down\n";
         exit(0);
     }
 
