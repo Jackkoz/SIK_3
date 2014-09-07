@@ -28,6 +28,8 @@ long myID = -1;
 
 boost::asio::io_service ioService;
 
+boost::asio::posix::stream_descriptor in(ioService, ::dup(STDIN_FILENO));
+
 tcp::socket tcp_socket(ioService);
 
 boost::array<char, 16384> tcp_buffer;
@@ -44,9 +46,11 @@ long win = 0;
 
 udp::endpoint udp_receiver_endpoint;
 
-boost::asio::deadline_timer connection_timer(ioService, boost::posix_time::seconds(1));
+boost::asio::deadline_timer connection_timer(ioService); //, boost::posix_time::seconds(1));
 
-boost::asio::deadline_timer keepalive_timer(ioService, boost::posix_time::milliseconds(100));
+boost::asio::deadline_timer keepalive_timer(ioService); // , boost::posix_time::milliseconds(100));
+
+boost::asio::deadline_timer stdin_timer(ioService); //, boost::posix_time::milliseconds(10));
 
 bool connectionIsAlive = true;
 
@@ -60,9 +64,9 @@ void keepalive(const boost::system::error_code& /*e*/, boost::asio::deadline_tim
 void keepalive_task();
 void check_connection(const boost::system::error_code& /*e*/, boost::asio::deadline_timer* t);
 void check_connection_task();
-void tcp_receive_raports();
+void tcp_receive_reports();
 void tcp_handler(const boost::system::error_code &error, size_t bytes_transferred);
-void tcp_receive_raports();
+void tcp_receive_reports();
 void connect_tcp();
 void connect_udp();
 void udp_communicate();
@@ -178,7 +182,7 @@ void check_connection_task()
 }
 
 /**
- * Obsługa przeczytanego raportu
+ * Obsługa przeczytanego reportu
  */
 void tcp_handler(const boost::system::error_code &error, size_t bytes_transferred)
 {
@@ -191,13 +195,13 @@ void tcp_handler(const boost::system::error_code &error, size_t bytes_transferre
 
     cerr.write(tcp_buffer.data(), bytes_transferred);
 
-    tcp_receive_raports();
+    tcp_receive_reports();
 }
 
 /**
- * Asynchroniczne oczekiwanie na raport serwera
+ * Asynchroniczne oczekiwanie na report serwera
  */
-void tcp_receive_raports()
+void tcp_receive_reports()
 {
     tcp_socket.async_read_some(boost::asio::buffer(tcp_buffer),
             boost::bind(&tcp_handler,
@@ -271,7 +275,7 @@ void connect_tcp()
 
         sscanf(buf, "CLIENT %ld\n", &myID);
 
-        cerr << "Obtained id: " + myID + '\n';
+        cout << "Obtained id: " + myID + '\n';
     }
     catch (exception& e)
     {
@@ -332,6 +336,8 @@ void udp_communication_handler(const boost::system::error_code &error, size_t by
         return;
     }
 
+    cout << "Reading response header\n";
+
     char datagram_type[16];
 
     sscanf(udp_receive_buffer, "%s ", datagram_type);
@@ -344,6 +350,8 @@ void udp_communication_handler(const boost::system::error_code &error, size_t by
         handle_ack_datagram();
     else
         cerr << "Unknown datagram, ignoring\n";
+
+    cout << "Handled\n";
 
     // cout.write(udp_receive_buffer, bytes_transferred);
     udp_communicate();
@@ -423,7 +431,7 @@ void start_server()
     keepalive_task();
     cerr << "Keepalive task started\n";
 
-    tcp_receive_raports();
+    tcp_receive_reports();
     cerr << "Reports receiving task started\n";
 
     check_connection_task();

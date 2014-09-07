@@ -24,3 +24,7 @@ server
 client
 index.html
 .gitignore~
+log.txt
+error.txt
+serwer
+klient

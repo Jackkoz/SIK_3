@@ -1,4 +1,10 @@
-#include <cstddef>
+#include <algorithm>
+#include <vector>
+
+using namespace std;
+
+#define MAX  32767;
+#define MIN -32678;
 
 struct mixer_input
 {
@@ -16,4 +22,5 @@ void mixer(
                                            // w tej zmiennej liczbę bajtów zapisanych w output_buf
     unsigned long tx_interval_ms           // wartość zmiennej TX_INTERVAL
 )
-{}
+{
+}
